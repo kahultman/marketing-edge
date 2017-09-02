@@ -5,7 +5,16 @@ Estimation of customer equity is an essential component for developing a success
 This project attempts to improve the estimation of customer equity for a leading US nonprofit organization based on previous transaction and contact history. 
 
 
+## Data files
 
+1. appeal.sas7bdat
+2. trans.sas7bdat = History Final.txt (? poorly formatted) 
+3. donor.sas7bdat = First Gift Final.txt
+4. source.sas7bdat = Appeal Cost.txt
+5. InfoCode.txt
+6. Promo Final.txt
+
+### Variables
 
 
 
