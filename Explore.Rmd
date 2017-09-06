@@ -1,0 +1,128 @@
+---
+title: "Basic exploration"
+author: "Keith Hultman"
+date: "September 2, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Explore the data files
+
+
+```{r}
+load("./data/appeal.Rdata")
+load("./data/donor.Rdata")
+load("./data/trans.Rdata")
+load("./data/source.Rdata")
+load("./data/infocode.Rdata")
+```
+
+
+## Trans
+
+Let's start exploring the transactions data. 
+
+```{r}
+head(trans)
+summary(trans$giftdate)
+```
+
+Before doing any visualizations on the gift amounts, I will first filter out the final year of transactions in this data set to use as a test set for predictions. Visualizations and modeling will be using the training data set. 
+
+```{r}
+trans_train <- filter(trans, giftdate < "2005-11-10")
+trans_test <- filter(trans, giftdate >= "2005-11-10")
+
+library(tidyverse)
+library(lubridate)
+yearly_trans <- trans_train %>% mutate(giftyear = year(giftdate)) %>% 
+  group_by(giftyear) %>% 
+  summarise(gift_per_year = sum(amt))
+
+ggplot(yearly_trans, aes(giftyear, gift_per_year)) + geom_line() + ggtitle("Total donation amount per year")
+
+trans_train %>% group_by(giftdate) %>% 
+  summarise(gift_per_day = sum(amt)) %>% 
+  mutate(cumgift = cumsum(gift_per_day)/1000000) %>% ggplot(aes(giftdate, cumgift)) + 
+  geom_line() +
+  ggtitle("Cumulative daily donation amount over time") +
+  ylab("Cumulative gifts (Millions of Dollars)") +
+  xlab("Date")
+
+head(trans)
+unique(trans$center)
+```
+
+Center might be a location of the non-profit that sent out an appeal for donations, it is not listed in the data dictionary.
+
+## Donor
+
+```{r}
+head(donor)
+```
+
+Donor file has list of all donors by id and the date of their first donation.
+
+
+## Source 
+
+```{r}
+head(source)
+
+nrow(source)
+nrow(distinct(source[,1]))
+
+summary(source$cost)
+hist(source$cost, col = "blue")
+```
+
+The source table appears to have a list of donation requests with the cost of each source equalling an approximate cost of printing and postage of a letter. There are some rare examples of the cost above \$1 and as high as \$14. This can be combined with the appeal table and replaced.  
+
+## Appeal
+
+```{r}
+head(appeal)
+appeal2 <- left_join(appeal, source)
+```
+
+Appeal has donor id, date of appeal and source. The appeal might be a solicitation as that is mentioned in the description, but I'm not positive. Although the data dictionary says source is the zip code, this is incorrect, and is the source id for each appeal. 
+
+```{r}
+appeal2 %>% group_by(source) %>% 
+  summarise(totalcost = sum(cost)) %>% 
+  ggplot(aes(totalcost))+geom_histogram()+scale_x_log10(breaks = c(1, 10, 100, 1000, 10000)) +
+  ggtitle("Total cost of appeals") + xlab("Total cost ($)") + ylab("Number of Appeals")
+```
+
+
+
+## Infocode
+
+```{r}
+head(infocode)
+infocode %>% select(code) %>% distinct() %>% summarise(n())
+```
+
+There are 100 different codes possible for each donor, but I'm not sure what they mean. Let's look at the most common donor codes.
+
+```{r}
+infocode$code <- as.factor(infocode$code)
+
+code_order <- infocode %>% 
+  group_by(code) %>% 
+  summarise(count = n()) %>% 
+  arrange(desc(count)) %>% 
+  top_n(25) %>% ungroup()
+
+code_order$code <- factor(code_order$code, levels = code_order$code[order(code_order$count)])
+
+ggplot(code_order, aes(code, count))+geom_bar(stat="identity") + 
+  coord_flip() +
+  ggtitle("Top 25 Donor Codes") + 
+  ylab("Number of Donors") +
+  xlab("Donor Code")
+```
+
