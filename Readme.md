@@ -19,12 +19,13 @@ Customer equity is the aggregate value of customers to a business, or in our cas
 | Variable name | Description | Files
 |---------------|------------------------|----------------|
 | id | Donor ID | appeal, donor, trans |
-| source | Donor Zip Code | 
+| source | appeal id | appeal, source|
 | amt | amount of gift | trans |
 | giftdate | date of gift | trans |
-| cost | ? | source |
+| cost | cost of appeal | source |
 | firstgift | date of first gift of donor | donor |
 | appdate | appeal date | appeal |
+| center | unknown | 
 
 
 
