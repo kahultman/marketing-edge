@@ -25,7 +25,8 @@ saveRDS(donor, file = "donor.RDS")
 
 source <- read_sas("source.sas7bdat")
 attr(source, "label") <- NULL
-save(source, file = "source.Rdata")
+
+saveRDS(source, file = "source.RDS")
 write_csv(source, path = "source.csv")
 
 #### Trans
