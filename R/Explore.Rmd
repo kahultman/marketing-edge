@@ -7,6 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
 ```
 
 ## Explore the data files
@@ -125,4 +126,24 @@ ggplot(code_order, aes(code, count))+geom_bar(stat="identity") +
   ylab("Number of Donors") +
   xlab("Donor Code")
 ```
+
+Doing some googling didn't resolve what these codes mean, but they could have some information on the kind of donor. 
+
+```{r}
+infocode$id <- as.numeric(infocode$id)
+infocode$id <- as.character(infocode$id)
+
+head(infocode)
+donor2 <- left_join(donor, infocode)
+
+donor3 <- left_join(infocode, donor)
+
+trans_train2 <- left_join(trans_train, infocode)
+trans_train2 <- trans_train2[!is.na(trans_train2$code),]
+sum(!is.na(trans_train2$code))
+
+
+```
+
+
 
