@@ -2,13 +2,13 @@
 title: "Basic exploration"
 author: "Keith Hultman"
 date: "September 2, 2017"
-output: html_document
+output: github_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 knitr::opts_knit$set(root.dir = "../data/")
-setwd("./data/")
+#setwd("./data/")
 library(tidyverse)
 ```
 
