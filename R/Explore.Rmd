@@ -7,43 +7,45 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-
+knitr::opts_knit$set(root.dir = "../data/")
+setwd("./data/")
+library(tidyverse)
 ```
 
-## Explore the data files
-
+# Explore the data files
 
 ```{r}
-load("./data/appeal.Rdata")
-load("./data/donor.Rdata")
-load("./data/trans.Rdata")
-load("./data/source.Rdata")
-load("./data/infocode.Rdata")
+appeal <- readRDS("appeal.RDS")
+donor <- readRDS("donor.RDS")
+trans_train <- readRDS("trans_train.RDS")
+source <- readRDS("source.RDS")
+infocode <- readRDS("infocode.RDS")
 ```
-
 
 ## Trans
 
-Let's start exploring the transactions data. 
+Let's start exploring the transactions data. Before doing any visualizations on the gift amounts, I first filtered out the final year of transactions in this data set to use as a test set for predictions. Visualizations and modeling will be using the training data set. 
 
 ```{r}
-head(trans)
-summary(trans$giftdate)
+#trans <- readRDS("trans.RDS")
+#trans_train <- filter(trans, giftdate < "2005-11-10")
+#trans_test <- filter(trans, giftdate >= "2005-11-10")
+dim(trans_train)
+head(trans_train)
 ```
 
-Before doing any visualizations on the gift amounts, I will first filter out the final year of transactions in this data set to use as a test set for predictions. Visualizations and modeling will be using the training data set. 
+Let's look at the gift totals over time.
 
 ```{r}
-trans_train <- filter(trans, giftdate < "2005-11-10")
-trans_test <- filter(trans, giftdate >= "2005-11-10")
-
-library(tidyverse)
 library(lubridate)
 yearly_trans <- trans_train %>% mutate(giftyear = year(giftdate)) %>% 
   group_by(giftyear) %>% 
   summarise(gift_per_year = sum(amt))
 
-ggplot(yearly_trans, aes(giftyear, gift_per_year)) + geom_line() + ggtitle("Total donation amount per year")
+ggplot(yearly_trans, aes(giftyear, gift_per_year)) + 
+  geom_line() + 
+  ggtitle("Total yearly donations") +
+  labs(x ="Year", y= "Total gift amount (US Dollars)")
 
 trans_train %>% group_by(giftdate) %>% 
   summarise(gift_per_day = sum(amt)) %>% 
@@ -52,35 +54,68 @@ trans_train %>% group_by(giftdate) %>%
   ggtitle("Cumulative daily donation amount over time") +
   ylab("Cumulative gifts (Millions of Dollars)") +
   xlab("Date")
-
-head(trans)
-unique(trans$center)
 ```
 
-Center might be a location of the non-profit that sent out an appeal for donations, it is not listed in the data dictionary.
+
+```{r}
+plot(sort(unique(trans_train$center)),main = "Unique values of 'Center' in data set")
+```
+
+Based on the name of the variable and the distribution of unique values, 'Center' might be a location of the non-profit that sent out an appeal for donations. It is not listed or explained in the data dictionary. Notably missing is a value of 013, which might be due to reluctance of naming a building or center with the unlucky number.
+
+## Look at center amounts over time
+
 
 ## Donor
 
 ```{r}
+dim(donor)
 head(donor)
 ```
 
 Donor file has list of all donors by id and the date of their first donation.
+```{r}
+donor %>% mutate(year = year(firstgift)) %>% 
+  ggplot(aes(x=year)) + geom_histogram()
 
+summary(donor$firstgift)
+
+donor2200 <- donor %>% filter(firstgift > "2100-01-01")
+donor2200
+```
+
+It looks like there is a problem with the Donor data set, in that there are 71,924 donors who are designated to have given their first gift in the year 2200. The question is, how should we handle this 'missing' data? Since all of these are on the exact same date, on January 1 of 2200, it is possible this is a dummy date for when the first gift date is either unknown or perhaps occurred prior to the transaction history in the database, or maybe they have not yet given a donation. The data description gives zero guidance. Let's pull their transaction history and take a look. 
+
+```{r}
+donor2200 <- left_join(donor2200, trans_train)
+donor2200
+summary(donor2200$amt)
+```
+
+Mystery solved! These are donors who haven't given to the nonprofit yet. The non-donor donors, I guess. This is a bit of a problem, because this donor table is actually a case of test data leakage. I know with 100% confidence that none of these donors will give money in 2007. If they had, the donor list would have had 2007 as their first gift date.  Therefore, I will filter out all donors that gave after our test data time split (this will also filter out all of the year 2200 non-donors). 
+
+```{r}
+donor <- donor %>% filter(firstgift < "2005-11-10") %>% 
+  mutate(year= year(firstgift))
+
+ggplot(donor, aes(x=year)) + 
+  geom_histogram(bins = diff(range(donor$year))) +
+  ggtitle("Distribution of Donor's first gift date")
+```
 
 ## Source 
 
 ```{r}
-head(source)
-
-nrow(source)
+dim(source)
 nrow(distinct(source[,1]))
+
+head(source)
 
 summary(source$cost)
 hist(source$cost, col = "blue")
 ```
 
-The source table appears to have a list of donation requests with the cost of each source equalling an approximate cost of printing and postage of a letter. There are some rare examples of the cost above \$1 and as high as \$14. This can be combined with the appeal table and replaced.  
+The source table appears to have a list of donation requests with the cost of each source equalling an approximate cost of printing and postage of a letter. There are some rare examples of the cost above \$1 and as high as \$14. This can be combined with the appeal table. 
 
 ## Appeal
 
@@ -89,61 +124,67 @@ head(appeal)
 appeal2 <- left_join(appeal, source)
 ```
 
-Appeal has donor id, date of appeal and source. The appeal might be a solicitation as that is mentioned in the description, but I'm not positive. Although the data dictionary says source is the zip code, this is incorrect, and is the source id for each appeal. 
+Appeal has donor id, date of appeal and source. The appeal might be a solicitation as that is mentioned in the description, but I'm not positive. Although the data dictionary says source is the zip code, this is incorrect, and is the source id for each appeal. Let's look at the total cost of each appeal by source.
 
 ```{r}
 appeal2 %>% group_by(source) %>% 
   summarise(totalcost = sum(cost)) %>% 
   ggplot(aes(totalcost))+geom_histogram()+scale_x_log10(breaks = c(1, 10, 100, 1000, 10000)) +
-  ggtitle("Total cost of appeals") + xlab("Total cost ($)") + ylab("Number of Appeals")
+  ggtitle("Total cost of each source across all appeals") + xlab("Total cost ($)") + ylab("Number of Sources")
 ```
-
 
 
 ## Infocode
 
 ```{r}
 head(infocode)
-infocode %>% select(code) %>% distinct() %>% summarise(n())
+infocode %>% select(code) %>% distinct() %>% nrow()
 ```
 
 There are 100 different codes possible for each donor, but I'm not sure what they mean. Let's look at the most common donor codes.
 
 ```{r}
-infocode$code <- as.factor(infocode$code)
-
-code_order <- infocode %>% 
+top_code <- infocode %>% 
   group_by(code) %>% 
   summarise(count = n()) %>% 
   arrange(desc(count)) %>% 
   top_n(25) %>% ungroup()
 
-code_order$code <- factor(code_order$code, levels = code_order$code[order(code_order$count)])
+top_code$code <- factor(top_code$code, levels = top_code$code[order(top_code$count)])
 
-ggplot(code_order, aes(code, count))+geom_bar(stat="identity") + 
+ggplot(top_code, aes(code, count))+geom_bar(stat="identity") + 
   coord_flip() +
   ggtitle("Top 25 Donor Codes") + 
   ylab("Number of Donors") +
   xlab("Donor Code")
 ```
 
-Doing some googling didn't resolve what these codes mean, but they could have some information on the kind of donor. 
+Doing some googling didn't resolve what these codes mean, but they could have some information on the kind of donor. Let's look at the distribution of gift amount by code. 
 
 ```{r}
-infocode$id <- as.numeric(infocode$id)
-infocode$id <- as.character(infocode$id)
-
-head(infocode)
-donor2 <- left_join(donor, infocode)
-
-donor3 <- left_join(infocode, donor)
+library(ggjoy)
 
 trans_train2 <- left_join(trans_train, infocode)
+
 trans_train2 <- trans_train2[!is.na(trans_train2$code),]
-sum(!is.na(trans_train2$code))
 
+# codes_three_or_more <- trans_train2 %>% group_by(code) %>% 
+#   summarise(code_n = n()) %>% 
+#   filter(code_n >= 3)
 
+trans_train2 <- filter(trans_train2, code %in% top_code$code) %>% 
+  mutate(logamt = ifelse(amt==0, 0, log(amt)), 
+         code = factor(code, levels = top_code$code[order(top_code$count)]))
+
+ggplot(trans_train2, aes(x=logamt, y=code, fill = code)) + geom_joy() + scale_x_continuous(limits = c(0,7.5))
+
+trans_train2 %>% filter(amt > 0.5) %>% 
+  ggplot(aes(x=amt, y=code, fill = code)) + 
+  geom_joy() + scale_x_log10(breaks = c(1, 10, 100, 1000), limits = c(NA, 5000)) +  
+  scale_fill_discrete(guide=FALSE) +
+  ggtitle("Distribution of donation amount of the top 25 donor codes") +
+  labs(x="Gift amount, dollars in log scale", y = "Donor code (Top 25)")
 ```
 
-
+It's interesting that the donor codes have quite different distributions, and that the top donor code has a top amount of \$100. Codes that have a decent number of \$1000 donations are not in the top 20.
 
